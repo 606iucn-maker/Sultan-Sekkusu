@@ -29,6 +29,12 @@
    "name": "رقص شراميط",
    "type": "both",
    "order": 5
+  },
+  {
+   "id": "thjvrktrrnek",
+   "name": "رقص عاري",
+   "type": "both",
+   "order": 6
   }
  ],
  "items": [
