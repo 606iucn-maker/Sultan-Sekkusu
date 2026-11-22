@@ -143,6 +143,7 @@ footer{border-top:1px solid var(--line);padding:22px 16px;text-align:center;colo
 .gal .g button.cv{top:auto;bottom:3px;left:3px;right:3px;width:auto;height:22px;border-radius:6px;font-size:.7rem;font-weight:700;color:var(--yellow);padding:0}
 .pinb{position:absolute;bottom:9px;right:9px;background:rgba(10,10,10,.82);color:var(--yellow);font-weight:700;font-size:.74rem;padding:2px 10px;border-radius:999px;border:1px solid rgba(243,224,74,.45)}
 #plCats{justify-content:center;max-width:960px;align-items:center}
+#plMore{display:flex;flex-direction:column;gap:12px;align-items:center;width:100%}
 /* admin */
 .admin{max-width:900px;margin:0 auto;padding:18px 16px 70px}
 .admin-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
@@ -244,6 +245,7 @@ details.help b{color:var(--text)}
   <button class="x mx" id="plClose" aria-label="إغلاق">✕</button>
   <video id="plVideo" controls playsinline class="hidden"></video>
   <iframe id="plFrame" class="hidden" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  <div class="hidden" id="plMore"></div>
   <div class="cap" id="plTitle"></div>
   <div class="cchips hidden" id="plCats"></div>
   <a id="plOpen" class="btn sm hidden" target="_blank" rel="noopener noreferrer">فتح الرابط الأصلي</a>
@@ -314,6 +316,7 @@ details.help b{color:var(--text)}
             </div>
           </div>
 
+          <div class="field" id="moreField"><label for="vmore">فيديوهات إضافية في نفس الألبوم (اختياري)</label><textarea class="inp ltr" id="vmore" placeholder="https://mega.nz/embed/...#...&#10;https://mega.nz/embed/...#..."></textarea><div class="note">ضع رابط كل فيديو في سطر مستقل. يدعم روابط MEGA ويوتيوب وGoogle Drive وVimeo. يظهر الفيديو الأول، ثم هذه الفيديوهات تحته، ثم الصور.</div></div>
           <div class="field" id="imgField">
             <label id="imgLabel">الصورة</label>
             <div class="drop" id="imgDrop"><span>اضغط لاختيار صورة أو اسحبها هنا</span></div>
@@ -709,7 +712,8 @@ function card(it,photoList){
   if(it.kind==="video"){
     var pl=h("div",{class:"play"}); pl.innerHTML='<b><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></b>'; th.appendChild(pl);
     if(it.duration) th.appendChild(h("span",{class:"badge",text:it.duration}));
-    if(it.gallery&&it.gallery.length) th.appendChild(h("span",{class:"gc",text:"🖼 "+it.gallery.length}));
+    var gp=[]; if(it.more&&it.more.length) gp.push("🎬 "+(it.more.length+1)); if(it.gallery&&it.gallery.length) gp.push("🖼 "+it.gallery.length);
+    if(gp.length) th.appendChild(h("span",{class:"gc",text:gp.join(" · ")}));
   }
   var chips=h("div",{class:"chips"}); cats.forEach(function(c){ chips.appendChild(h("span",{class:"chip",text:c.name+(c.type==="both"?" · ألبوم":"")})) });
   var meta=h("div",{class:"meta"},[h("p",{text:it.title||""}), cats.length?chips:null]);
@@ -802,6 +806,14 @@ function openPlayer(it){
   else if(pl&&pl.embed){ f.src=pl.embed; f.classList.remove("hidden") }
   else return;
   if(link&&!(pl&&pl.type==="mega")){ o.href=link; o.classList.remove("hidden") }
+  var mb=$("plMore"); mb.textContent=""; var more=(it.more||[]).filter(Boolean);
+  more.forEach(function(u){
+    var q=parseVideoLink(u);
+    if(q&&q.embed) mb.appendChild(h("iframe",{src:noAuto(q.embed),allow:"autoplay; fullscreen; picture-in-picture",allowfullscreen:"",loading:"lazy",referrerpolicy:"strict-origin-when-cross-origin"}));
+    else if(q&&q.type==="direct") mb.appendChild(h("video",{src:u,controls:"",playsinline:"",preload:"metadata"}));
+    else { var sl=safeUrl(u); if(sl) mb.appendChild(h("a",{class:"btn sm",href:sl,target:"_blank",rel:"noopener noreferrer",text:"فتح فيديو"})) }
+  });
+  mb.classList.toggle("hidden",!more.length);
   $("plTitle").textContent=it.title||""; fillCats(it);
   var g=$("plGal"); g.textContent=""; var gl=it.gallery||[];
   if(gl.length){
@@ -811,9 +823,10 @@ function openPlayer(it){
     plist.forEach(function(x){ grid.appendChild(h("img",{src:media(x.image),alt:"",loading:"lazy",onclick:function(){openLightbox(plist,x.id)}})) });
     g.appendChild(grid); g.classList.remove("hidden");
   } else g.classList.add("hidden");
-  $("player").classList.toggle("scroll",!!gl.length);
+  $("player").classList.toggle("scroll",!!(gl.length||more.length));
   $("player").classList.remove("hidden"); $("player").scrollTop=0;
 }
+function noAuto(u){ return u.replace(/([?&])autoplay=1&?/,"$1").replace(/[?&]$/,"") }
 function fillCats(it){
   var box=$("plCats"); box.textContent="";
   var cs=(it.categoryIds||[]).map(catById).filter(Boolean);
@@ -826,6 +839,7 @@ function fillCats(it){
 }
 function openAlbum(it){
   $("plVideo").classList.add("hidden"); $("plFrame").classList.add("hidden"); $("plOpen").classList.add("hidden");
+  $("plMore").textContent=""; $("plMore").classList.add("hidden");
   $("plTitle").textContent=it.title||""; fillCats(it);
   var g=$("plGal"); g.textContent=""; var gl=it.images||[];
   var plist=gl.map(function(p,i){return {id:"a"+i,image:p,title:it.title||""}});
@@ -837,7 +851,7 @@ function openAlbum(it){
 }
 function closePlayer(){
   var v=$("plVideo"), f=$("plFrame"); v.pause(); v.removeAttribute("src"); v.load(); f.removeAttribute("src");
-  $("player").classList.add("hidden"); $("player").classList.remove("scroll"); $("plGal").textContent="";
+  $("player").classList.add("hidden"); $("player").classList.remove("scroll"); $("plGal").textContent=""; $("plMore").textContent="";
 }
 $("plClose").addEventListener("click",closePlayer);
 $("player").addEventListener("click",function(e){ if(e.target===this) closePlayer() });
@@ -895,6 +909,7 @@ function updateForm(){
   $("urlField").classList.toggle("hidden",fs.kind!=="video"||fs.src!=="link");
   $("fileField").classList.toggle("hidden",fs.kind!=="video"||fs.src!=="file");
   $("durField").classList.toggle("hidden",fs.kind!=="video");
+  $("moreField").classList.toggle("hidden",fs.kind!=="video");
   var isNewPhoto=fs.kind==="photo";
   $("galField").classList.toggle("hidden",!(fs.kind==="video"||isNewPhoto));
   $("imgField").classList.toggle("hidden",isNewPhoto);
@@ -957,7 +972,7 @@ function renderAdmin(){
       h("div",{class:"t"},[ (src||it.thumbUrl)?h("img",{src:src?media(src):it.thumbUrl,alt:""}):null ]),
       h("div",{class:"info"},[
         h("p",{text:it.title||""}),
-        h("small",{text:(it.pinned?"📌 ":"")+(it.kind==="video"?"فيديو":"صورة")+" · "+(cnames||"بدون قسم")+(it.duration?" · "+it.duration:"")+(it.kind==="video"?(it.file?" · ملف مرفوع":" · رابط"):"")+(it.gallery&&it.gallery.length?" · "+it.gallery.length+" صورة":"")+(it.kind==="photo"&&it.images&&it.images.length>1?" · ألبوم "+it.images.length+" صورة":"")})
+        h("small",{text:(it.pinned?"📌 ":"")+(it.kind==="video"?"فيديو":"صورة")+" · "+(cnames||"بدون قسم")+(it.duration?" · "+it.duration:"")+(it.kind==="video"?(it.file?" · ملف مرفوع":" · رابط"):"")+(it.gallery&&it.gallery.length?" · "+it.gallery.length+" صورة":"")+(it.kind==="photo"&&it.images&&it.images.length>1?" · ألبوم "+it.images.length+" صورة":"")+(it.more&&it.more.length?" · "+(it.more.length+1)+" فيديو":"")})
       ]),
       h("div",{class:"acts"},[h("button",{class:"btn sm",type:"button",text:"تعديل",onclick:function(){startEdit(it)}}),delBtn])
     ]));
@@ -1020,7 +1035,7 @@ $("cancelEdit").addEventListener("click",function(){ resetForm(); msg($("vmsg"),
 function startEdit(it){
   resetState(); fs.editing=it; fs.kind=it.kind; fs.src=it.file?"file":"link";
   fs.cats=(it.categoryIds||[]).slice();
-  $("vpin").checked=!!it.pinned;
+  $("vpin").checked=!!it.pinned; $("vmore").value=(it.more||[]).join("\n");
   fs.gal=((it.kind==="photo"?(it.images&&it.images.length?it.images:[it.image]):it.gallery)||[]).filter(Boolean).map(function(p){return {path:p,src:media(p)}});
   if(it.kind==="photo") fs.coverG=fs.gal.find(function(g){return g.path===it.image})||null;
   $("vurl").value=it.url||""; $("vtitle").value=it.title||""; $("vdur").value=it.duration||"";
@@ -1120,6 +1135,9 @@ $("vform").addEventListener("submit",async function(e){
     item.image=item.images[fs.gal.indexOf(coverG)];
   } else {
     item.duration=$("vdur").value.trim();
+    var mlines=$("vmore").value.split(/\n/).map(function(s){return s.trim()}).filter(Boolean), mm=[];
+    for(var q=0;q<mlines.length;q++){ var nu=safeUrl(normLink(mlines[q])); if(!nu) return msg(m,"الرابط رقم "+(q+1)+" في الفيديوهات الإضافية غير صحيح.",false); mm.push(nu) }
+    item.more=mm;
     if(fs.src==="link"){
       var u=safeUrl(normLink($("vurl").value)); if(!u) return msg(m,"أدخل رابط فيديو صحيحًا يبدأ بـ https://",false);
       item.url=u;
