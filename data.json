@@ -65,6 +65,12 @@
    "name": "نودز مصري",
    "type": "both",
    "order": 11
+  },
+  {
+   "id": "nxym6eou0adn",
+   "name": "نودز عربي",
+   "type": "both",
+   "order": 12
   }
  ],
  "items": [
