@@ -312,7 +312,7 @@ details.help b{color:var(--text)}
             <div class="field" id="urlField"><label for="vurl">رابط الفيديو <em>*</em></label><input class="inp ltr" id="vurl" type="url" placeholder="https://..." autocomplete="off"><div class="note">يدعم روابط التضمين من MEGA (https://mega.nz/embed/... أو الصيغة ID#KEY) ويوتيوب وGoogle Drive وVimeo وروابط mp4 المباشرة، وتُشغَّل داخل الموقع. الفيديوهات الكبيرة (مثل 1.5 جيجا) ارفعها هناك والصق الرابط.</div></div>
             <div class="field hidden" id="fileField">
               <label>ملف الفيديو <em>*</em></label>
-              <input class="inp" id="vfile" type="file" accept="video/*" multiple>
+              <div id="vslots"><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 1</label><input class="inp vf-in" id="vfile" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 2</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 3</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 4</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 5</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 6</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 7</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 8</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 9</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><div style="margin-bottom:8px"><label style="font-size:.85rem;color:var(--muted)">فيديو 10</label><input class="inp vf-in" type="file" accept="video/*" multiple></div><button type="button" class="btn" id="vclear" style="margin-bottom:8px">مسح كل الاختيارات</button></div>
               <div class="note" id="vfileInfo">يمكنك اختيار عدة فيديوهات معاً. الحد الأقصى 95 ميجابايت لكل فيديو. للفيديوهات الأكبر استخدم «رابط فيديو» من يوتيوب أو Google Drive.</div>
             </div>
           </div>
@@ -1137,14 +1137,20 @@ function inspectVideo(file){
     v.src=url;
   });
 }
-$("vfile").addEventListener("change",async function(){
-  var all=Array.prototype.slice.call(this.files||[]); fs.videoFiles=[];
+function clearVf(){ Array.prototype.forEach.call(document.querySelectorAll(".vf-in"),function(i){ i.value="" }) }
+async function onVideoFiles(){
+  var all=[], seen={};
+  Array.prototype.forEach.call(document.querySelectorAll(".vf-in"),function(inp){
+    Array.prototype.forEach.call(inp.files||[],function(x){ var k=x.name+"|"+x.size+"|"+x.lastModified; if(!seen[k]){ seen[k]=1; all.push(x) } });
+  });
+  if(all.length>10){ all=all.slice(0,10); msg($("vmsg"),"الحد الأقصى 10 فيديوهات في المرة الواحدة، تم أخذ أول 10.",false) }
+  fs.videoFiles=[];
   if(all.length>1){
     fs.videoFile=null; fs.autoPoster=null; fs.autoDur="";
-    if(fs.editing){ msg($("vmsg"),"عند التعديل اختر فيديو واحدًا فقط.",false); this.value=""; return updateForm() }
+    if(fs.editing){ msg($("vmsg"),"عند التعديل اختر فيديو واحدًا فقط.",false); clearVf(); return updateForm() }
     var okf=all.filter(function(x){ return (/^video\//.test(x.type)||/\.(mp4|webm|mov|m4v|ogv)$/i.test(x.name)) && x.size<=MAXMB*1048576 });
     var skipped=all.length-okf.length;
-    if(!okf.length){ msg($("vmsg"),"لا يوجد فيديو صالح (الحد "+MAXMB+" MB لكل فيديو).",false); this.value=""; return updateForm() }
+    if(!okf.length){ msg($("vmsg"),"لا يوجد فيديو صالح (الحد "+MAXMB+" MB لكل فيديو).",false); clearVf(); return updateForm() }
     msg($("vmsg"),skipped?("تم تجاهل "+skipped+" ملف (ليس فيديو أو أكبر من "+MAXMB+" MB)."):"",!skipped);
     $("vfileInfo").textContent="تم اختيار "+okf.length+" فيديو · جارٍ قراءتها…";
     var infos=[]; for(var q=0;q<okf.length;q++){ infos.push(await inspectVideo(okf[q])) }
@@ -1155,8 +1161,8 @@ $("vfile").addEventListener("change",async function(){
   }
   var f=all[0]; fs.videoFile=null; fs.autoPoster=null; fs.autoDur="";
   if(!f) return updateForm();
-  if(!/^video\//.test(f.type) && !/\.(mp4|webm|mov|m4v|ogv)$/i.test(f.name)){ msg($("vmsg"),"الملف المختار ليس فيديو.",false); this.value=""; return }
-  if(f.size>MAXMB*1048576){ msg($("vmsg"),"حجم الفيديو "+fmtMB(f.size)+" أكبر من الحد ("+MAXMB+" MB). ارفعه على يوتيوب أو Google Drive والصق الرابط في «رابط فيديو».",false); this.value=""; return }
+  if(!/^video\//.test(f.type) && !/\.(mp4|webm|mov|m4v|ogv)$/i.test(f.name)){ msg($("vmsg"),"الملف المختار ليس فيديو.",false); clearVf(); return }
+  if(f.size>MAXMB*1048576){ msg($("vmsg"),"حجم الفيديو "+fmtMB(f.size)+" أكبر من الحد ("+MAXMB+" MB). ارفعه على يوتيوب أو Google Drive والصق الرابط في «رابط فيديو».",false); clearVf(); return }
   msg($("vmsg"),""); fs.videoFile=f;
   $("vfileInfo").textContent=f.name+" · "+fmtMB(f.size)+" · جارٍ قراءة الفيديو…";
   var r=await inspectVideo(f);
@@ -1164,7 +1170,9 @@ $("vfile").addEventListener("change",async function(){
   if(!$("vdur").value.trim() && fs.autoDur) $("vdur").value=fs.autoDur;
   $("vfileInfo").textContent=f.name+" · "+fmtMB(f.size)+(fs.autoDur?" · المدة "+fs.autoDur:"")+(r.poster?"":" · تعذّر التقاط غلاف، اختر صورة غلاف");
   updateForm();
-});
+}
+Array.prototype.forEach.call(document.querySelectorAll(".vf-in"),function(i){ i.addEventListener("change",onVideoFiles) });
+$("vclear").addEventListener("click",function(){ clearVf(); onVideoFiles() });
 
 function extOf(name){ var m=/\.([a-z0-9]{2,4})$/i.exec(name||""); return m?m[1].toLowerCase():"mp4" }
 
