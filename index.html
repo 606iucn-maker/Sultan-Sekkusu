@@ -752,7 +752,7 @@ function card(it,photoList){
   if(it.kind==="video"){
     var pl=h("div",{class:"play"}); pl.innerHTML='<b><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></b>'; th.appendChild(pl);
     if(it.duration) th.appendChild(h("span",{class:"badge",text:it.duration}));
-    var gp=[]; if(it.more&&it.more.length) gp.push("🎬 "+(it.more.length+1)); if(it.gallery&&it.gallery.length) gp.push("🖼 "+it.gallery.length);
+    var gp=[]; var vc=1+(it.more?it.more.length:0)+(it.moreFiles?it.moreFiles.length:0); if(vc>1) gp.push("🎬 "+vc); if(it.gallery&&it.gallery.length) gp.push("🖼 "+it.gallery.length);
     if(gp.length) th.appendChild(h("span",{class:"gc",text:gp.join(" · ")}));
   }
   var chips=h("div",{class:"chips"}); cats.forEach(function(c){ chips.appendChild(h("span",{class:"chip",text:c.name+(c.type==="both"?" · ألبوم":"")})) });
@@ -846,14 +846,15 @@ function openPlayer(it){
   else if(pl&&pl.embed){ f.src=pl.embed; f.classList.remove("hidden") }
   else return;
   if(link&&!(pl&&pl.type==="mega")){ o.href=link; o.classList.remove("hidden") }
-  var mb=$("plMore"); mb.textContent=""; var more=(it.more||[]).filter(Boolean);
+  var mb=$("plMore"); mb.textContent=""; var more=(it.more||[]).filter(Boolean), mf=(it.moreFiles||[]).filter(Boolean);
+  mf.forEach(function(p){ mb.appendChild(h("video",{src:media(p),controls:"",playsinline:"",preload:"metadata",onplay:function(){pauseOthers(this)}})) });
   more.forEach(function(u){
     var q=parseVideoLink(u);
     if(q&&q.embed) mb.appendChild(h("iframe",{src:noAuto(q.embed),allow:"autoplay; fullscreen; picture-in-picture",allowfullscreen:"",loading:"lazy",referrerpolicy:"strict-origin-when-cross-origin"}));
     else if(q&&q.type==="direct") mb.appendChild(h("video",{src:u,controls:"",playsinline:"",preload:"metadata"}));
     else { var sl=safeUrl(u); if(sl) mb.appendChild(h("a",{class:"btn sm",href:sl,target:"_blank",rel:"noopener noreferrer",text:"فتح فيديو"})) }
   });
-  mb.classList.toggle("hidden",!more.length);
+  mb.classList.toggle("hidden",!(more.length||mf.length));
   $("plTitle").textContent=it.title||""; fillCats(it);
   var g=$("plGal"); g.textContent=""; var gl=it.gallery||[];
   if(gl.length){
@@ -863,9 +864,11 @@ function openPlayer(it){
     plist.forEach(function(x){ grid.appendChild(h("img",{src:media(x.image),alt:"",loading:"lazy",onclick:function(){openLightbox(plist,x.id)}})) });
     g.appendChild(grid); g.classList.remove("hidden");
   } else g.classList.add("hidden");
-  $("player").classList.toggle("scroll",!!(gl.length||more.length));
+  $("player").classList.toggle("scroll",!!(gl.length||more.length||mf.length));
   $("player").classList.remove("hidden"); $("player").scrollTop=0;
 }
+function pauseOthers(el){ Array.prototype.forEach.call(document.querySelectorAll("#player video"),function(x){ if(x!==el) x.pause() }) }
+$("plVideo").addEventListener("play",function(){ pauseOthers(this) });
 function noAuto(u){ return u.replace(/([?&])autoplay=1&?/,"$1").replace(/[?&]$/,"") }
 function fillCats(it){
   var box=$("plCats"); box.textContent="";
@@ -1087,7 +1090,7 @@ function startEdit(it){
 function deleteItem(it){
   store.mutate(function(d){ d.items=d.items.filter(function(x){return x.id!==it.id}) }).then(function(d){
     data=d; renderSite(); renderAdmin(); msg($("lmsg2"),"تم حذف العنصر.",true);
-    [it.image,it.thumb,it.file].concat(it.gallery||[],it.images||[]).filter(Boolean).forEach(function(p){ store.delFile(p) });
+    [it.image,it.thumb,it.file].concat(it.moreFiles||[],it.gallery||[],it.images||[]).filter(Boolean).forEach(function(p){ store.delFile(p) });
   }).catch(function(e){ handleErr(e,$("lmsg2")) });
 }
 
@@ -1156,7 +1159,7 @@ async function onVideoFiles(){
     var infos=[]; for(var q=0;q<okf.length;q++){ infos.push(await inspectVideo(okf[q])) }
     fs.videoFiles=okf.map(function(x,i){ return {f:x,poster:infos[i].poster,dur:fmtDur(infos[i].duration)} });
     var tot=okf.reduce(function(a,x){return a+x.size},0);
-    $("vfileInfo").textContent=okf.length+" فيديوهات · المجموع "+fmtMB(tot)+" · سيتم نشر كل فيديو كعنصر مستقل";
+    $("vfileInfo").textContent=okf.length+" فيديوهات · المجموع "+fmtMB(tot)+" · ستُنشر كلها في ألبوم واحد، وتظهر تحت بعضها عند فتحه";
     return updateForm();
   }
   var f=all[0]; fs.videoFile=null; fs.autoPoster=null; fs.autoDur="";
@@ -1191,30 +1194,6 @@ $("vform").addEventListener("submit",async function(e){
   if(cats.some(function(id){var c=catById(id);return !c||!catAllows(c,kind)})) return msg(m,"أحد الأقسام المختارة لا يقبل هذا النوع من المحتوى.",false);
   if(!title) return msg(m,"اكتب عنوانًا أو وصفًا.",false);
 
-  if(kind==="video"&&fs.src==="file"&&!ed&&fs.videoFiles.length>1){
-    if(fs.videoFiles.some(function(v){return !v.poster})&&!fs.imgFile) return msg(m,"تعذّر التقاط غلاف لبعض الفيديوهات. اختر صورة غلاف.",false);
-    var mjobs=[], mitems=[], now=Date.now(), pin=$("vpin").checked;
-    function npth(p,x){ return "media/"+p+uid()+"."+x }
-    fs.videoFiles.forEach(function(vf,z){
-      var mi={id:uid(),kind:"video",title:title+" ("+(z+1)+")",categoryIds:cats,createdAt:now-z,pinned:pin,duration:vf.dur||"",more:[],gallery:[]};
-      mi.file=npth("v_",extOf(vf.f.name)); mi.thumb=npth("t_","jpg");
-      mjobs.push({path:mi.file,make:function(){return Promise.resolve(vf.f)}});
-      mjobs.push({path:mi.thumb,make:function(){return vf.poster?Promise.resolve(vf.poster):shrink(fs.imgFile,1280)}});
-      mitems.push(mi);
-    });
-    busy=true; $("saveBtn").disabled=true;
-    try{
-      await uploadJobs(mjobs,m);
-      msg(m,"جارٍ الحفظ…",true);
-      var dm=await store.mutate(function(dd){
-        cats.forEach(function(id){ if(!dd.categories.some(function(x){return x.id===id})) throw new Error("أحد الأقسام لم يعد موجودًا.") });
-        mitems.forEach(function(x){ dd.items.push(x) });
-      });
-      data=dm; var cnt=mitems.length; resetForm(); renderSite(); renderAdmin();
-      msg($("vmsg"),"تم نشر "+cnt+" فيديو بنجاح."+(store.mode==="github"?" يظهر للزوار خلال دقيقة أو دقيقتين.":""),true);
-    }catch(err){ handleErr(err,m) }
-    busy=false; $("saveBtn").disabled=false; return;
-  }
   var item={id:ed?ed.id:uid(),kind:kind,title:title,categoryIds:cats,createdAt:ed?ed.createdAt:Date.now(),pinned:$("vpin").checked};
   var jobs=[]; // {path, make:()=>Promise<Blob>}
   function newPath(prefix,ext){ return "media/"+prefix+uid()+"."+ext }
@@ -1248,12 +1227,22 @@ $("vform").addEventListener("submit",async function(e){
         else return msg(m,"اختر صورة الغلاف للفيديو.",false);
       }
     } else {
-      if(!fs.videoFile && !(ed&&ed.file)) return msg(m,"اختر ملف الفيديو.",false);
-      item.file=ed&&ed.file||null; item.thumb=ed&&ed.thumb||null;
-      if(fs.videoFile){ item.file=newPath("v_",extOf(fs.videoFile.name)); jobs.push({path:item.file,make:function(){return Promise.resolve(fs.videoFile)}}) }
-      if(fs.imgFile){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return shrink(fs.imgFile,1280)}}) }
-      else if(fs.videoFile && fs.autoPoster){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return Promise.resolve(fs.autoPoster)}}) }
-      else if(fs.videoFile && !(ed&&ed.thumb)) return msg(m,"تعذّر التقاط غلاف من الفيديو. اختر صورة غلاف.",false);
+      var multiV=(!ed&&fs.videoFiles.length>1)?fs.videoFiles:null;
+      if(!fs.videoFile && !multiV && !(ed&&ed.file)) return msg(m,"اختر ملف الفيديو.",false);
+      item.file=ed&&ed.file||null; item.thumb=ed&&ed.thumb||null; item.moreFiles=ed&&ed.moreFiles||[];
+      if(multiV){
+        item.file=newPath("v_",extOf(multiV[0].f.name)); jobs.push({path:item.file,make:function(){return Promise.resolve(multiV[0].f)}});
+        item.moreFiles=[];
+        multiV.slice(1).forEach(function(vf){ var mp=newPath("v_",extOf(vf.f.name)); item.moreFiles.push(mp); jobs.push({path:mp,make:function(){return Promise.resolve(vf.f)}}) });
+        if(fs.imgFile){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return shrink(fs.imgFile,1280)}}) }
+        else if(multiV[0].poster){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return Promise.resolve(multiV[0].poster)}}) }
+        else return msg(m,"تعذّر التقاط غلاف من الفيديو. اختر صورة غلاف.",false);
+      } else {
+        if(fs.videoFile){ item.file=newPath("v_",extOf(fs.videoFile.name)); jobs.push({path:item.file,make:function(){return Promise.resolve(fs.videoFile)}}) }
+        if(fs.imgFile){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return shrink(fs.imgFile,1280)}}) }
+        else if(fs.videoFile && fs.autoPoster){ item.thumb=newPath("t_","jpg"); jobs.push({path:item.thumb,make:function(){return Promise.resolve(fs.autoPoster)}}) }
+        else if(fs.videoFile && !(ed&&ed.thumb)) return msg(m,"تعذّر التقاط غلاف من الفيديو. اختر صورة غلاف.",false);
+      }
     }
   }
   if(kind==="video"){
@@ -1262,7 +1251,7 @@ $("vform").addEventListener("submit",async function(e){
       var p=newPath("g_","jpg"); jobs.push({path:p,make:function(){return shrink(g.file,1600)}}); return p;
     });
   }
-  var oldPaths=ed?[ed.image,ed.thumb,ed.file].concat(ed.gallery||[],ed.images||[]).filter(Boolean):[];
+  var oldPaths=ed?[ed.image,ed.thumb,ed.file].concat(ed.moreFiles||[],ed.gallery||[],ed.images||[]).filter(Boolean):[];
   busy=true; $("saveBtn").disabled=true;
   try{
     await uploadJobs(jobs,m);
@@ -1276,7 +1265,7 @@ $("vform").addEventListener("submit",async function(e){
       if(idx>=0) dd.items[idx]=item; else dd.items.push(item);
     });
     data=d;
-    var np=[item.image,item.thumb,item.file].concat(item.gallery||[],item.images||[]).filter(Boolean);
+    var np=[item.image,item.thumb,item.file].concat(item.moreFiles||[],item.gallery||[],item.images||[]).filter(Boolean);
     oldPaths.filter(function(p){return np.indexOf(p)<0}).forEach(function(p){ store.delFile(p) });
     var was=!!ed; resetForm(); renderSite(); renderAdmin();
     msg($("vmsg"),(was?"تم حفظ التعديلات.":"تم النشر بنجاح.")+(store.mode==="github"?" يظهر للزوار خلال دقيقة أو دقيقتين.":""),true);
